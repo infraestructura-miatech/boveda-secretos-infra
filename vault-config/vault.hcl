@@ -74,13 +74,21 @@ listener "tcp" {
   # │ SECURITY HEADERS                                      │
   # └──────────────────────────────────────────────────────┘
   
-  custom_response_headers {
-    "X-Content-Type-Options" = ["nosniff"]
-    "X-Frame-Options" = ["DENY"]
-    "X-XSS-Protection" = ["1; mode=block"]
-    # Descomentar cuando uses HTTPS:
-    # "Strict-Transport-Security" = ["max-age=31536000; includeSubDomains"]
-  }
+  # custom_response_headers = {
+  #   "X-Content-Type-Options" = ["nosniff"]
+  #   "X-Frame-Options" = ["DENY"]
+  #   "X-XSS-Protection" = ["1; mode=block"]
+  # }
+
+  # Para HTTPS (descomentar cuando tengas TLS):
+  # custom_response_headers = {
+  #   "X-Content-Type-Options" = ["nosniff"]
+  #   "X-Frame-Options" = ["DENY"]
+  #   "X-XSS-Protection" = ["1; mode=block"]
+  #   "Strict-Transport-Security" = ["max-age=31536000; includeSubDomains"]
+  # }
+
+
 }
 
 # ────────────────────────────────────────────────────────────
