@@ -1,0 +1,224 @@
+# version: '3.8'
+
+# ════════════════════════════════════════════════════════════════
+# VAULT SINGLE-NODE PRODUCTION SETUP
+# ════════════════════════════════════════════════════════════════
+# Configuración de 1 nodo para producción con:
+# - Raft Integrated Storage (sin dependencias)
+# - TLS habilitado
+# - UI Web habilitada
+# - Auto-restart
+# - Health checks
+# - Volumes persistentes
+# ════════════════════════════════════════════════════════════════
+
+services:
+  # ────────────────────────────────────────────────────────────
+  # VAULT SERVER - Nodo Único de Producción
+  # ────────────────────────────────────────────────────────────
+  vault:
+    image: hashicorp/vault:1.15
+    container_name: vault-prod
+    hostname: vault-prod
+    
+    # Reiniciar automáticamente en caso de fallo
+    restart: unless-stopped
+    
+    ports:
+      - "8200:8200"  # API y UI (HTTPS en producción)
+    
+    environment:
+      # Configuración básica
+      VAULT_ADDR: 'http://0.0.0.0:8200'
+      VAULT_API_ADDR: 'http://vault-prod:8200'
+      VAULT_CLUSTER_ADDR: 'http://vault-prod:8201'
+      
+      # Logging
+      VAULT_LOG_LEVEL: 'info'
+      VAULT_LOG_FORMAT: 'json'
+      
+      # Skip verificación de TLS para desarrollo
+      # En producción: usar TLS real
+      VAULT_SKIP_VERIFY: 'true'
+    
+    # Capabilities necesarias para IPC_LOCK
+    cap_add:
+      - IPC_LOCK
+    
+    # Volúmenes persistentes
+    volumes:
+      # Configuración de Vault
+      - ./vault-config:/vault/config:ro
+      
+      # Datos persistentes (Raft storage)
+      - vault-data:/vault/data
+      
+      # Logs de auditoría
+      - vault-logs:/vault/logs
+      
+      # Políticas
+      - ./policies:/vault/policies:ro
+      
+      # TLS certificates (si usas TLS)
+      # - ./tls:/vault/tls:ro
+    
+    # Comando de inicio
+    command: server
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--no-verbose", "--tries=1", "http://localhost:8200/v1/sys/health?standbyok=true"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    
+    networks:
+      - vault-network
+    
+    # Labels para organización
+    labels:
+      - "app=vault"
+      - "environment=production"
+      - "tier=security"
+
+  # ────────────────────────────────────────────────────────────
+  # POSTGRESQL - Para Dynamic Database Credentials (Opcional)
+  # ────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: vault-postgres
+    
+    restart: unless-stopped
+    
+    ports:
+      - "5432:5432"
+    
+    environment:
+      POSTGRES_DB: appdb
+      POSTGRES_USER: vault_admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ChangeMeInProduction}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=en_US.UTF-8"
+    
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    
+    networks:
+      - vault-network
+    
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vault_admin -d appdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    
+    # Opcional: comentar si no necesitas DB
+    profiles:
+      - with-database
+
+  # ────────────────────────────────────────────────────────────
+  # NGINX - Reverse Proxy con TLS (Producción)
+  # ────────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: vault-nginx
+    
+    restart: unless-stopped
+    
+    ports:
+      - "443:443"
+      - "80:80"
+    
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/tls:/etc/nginx/tls:ro
+    
+    depends_on:
+      vault:
+        condition: service_healthy
+    
+    networks:
+      - vault-network
+    
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--no-verbose", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    
+    # Opcional: comentar si accedes directamente a Vault
+    profiles:
+      - with-nginx
+
+# ════════════════════════════════════════════════════════════════
+# VOLUMES - Persistencia de Datos
+# ════════════════════════════════════════════════════════════════
+volumes:
+  vault-data:
+    driver: local
+    name: vault_raft_data
+  
+  vault-logs:
+    driver: local
+    name: vault_audit_logs
+  
+  postgres-data:
+    driver: local
+    name: vault_postgres_data
+
+# ════════════════════════════════════════════════════════════════
+# NETWORKS
+# ════════════════════════════════════════════════════════════════
+networks:
+  vault-network:
+    driver: bridge
+    name: vault_prod_network
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
+
+# ════════════════════════════════════════════════════════════════
+# COMANDOS ÚTILES
+# ════════════════════════════════════════════════════════════════
+#
+# Iniciar Vault:
+#   docker-compose up -d
+#
+# Iniciar con PostgreSQL:
+#   docker-compose --profile with-database up -d
+#
+# Iniciar con Nginx:
+#   docker-compose --profile with-nginx up -d
+#
+# Ver logs:
+#   docker-compose logs -f vault
+#
+# Ejecutar comando en Vault:
+#   docker-compose exec vault vault status
+#
+# Backup de datos Raft:
+#   docker-compose exec vault vault operator raft snapshot save /vault/data/backup.snap
+#
+# Shell en el container:
+#   docker-compose exec vault sh
+#
+# Reiniciar Vault:
+#   docker-compose restart vault
+#
+# Actualizar a nueva versión:
+#   1. Backup: docker-compose exec vault vault operator raft snapshot save /vault/data/backup-$(date +%Y%m%d).snap
+#   2. Cambiar versión en docker-compose.yml
+#   3. docker-compose pull
+#   4. docker-compose up -d
+#
+# Detener todo:
+#   docker-compose down
+#
+# Limpiar todo (CUIDADO - borra datos):
+#   docker-compose down -v
+#
+# Ver estado del health check:
+#   docker-compose ps
+#
+# ════════════════════════════════════════════════════════════════
