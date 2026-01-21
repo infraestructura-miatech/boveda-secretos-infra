@@ -6,7 +6,7 @@
 .PHONY: help up down restart logs init backup restore status shell clean
 
 # Variables
-COMPOSE := docker-compose
+COMPOSE := docker compose
 VAULT := $(COMPOSE) exec vault vault
 BACKUP_DIR := ./backups
 DATE := $(shell date +%Y%m%d_%H%M%S)

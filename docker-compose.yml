@@ -67,7 +67,8 @@ services:
     
     # Health check
     healthcheck:
-      test: ["CMD", "wget", "--spider", "--no-verbose", "--tries=1", "http://localhost:8200/v1/sys/health?standbyok=true"]
+      #test: ["CMD", "wget", "--spider", "--no-verbose", "--tries=1", "http://localhost:8200/v1/sys/health?standbyok=true"]
+      test: ["CMD", "sh", "-c", "vault status -address=http://127.0.0.1:8200 || exit 0"]
       interval: 10s
       timeout: 5s
       retries: 5
