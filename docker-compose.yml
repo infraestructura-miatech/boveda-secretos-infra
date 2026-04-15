@@ -25,13 +25,14 @@ services:
     restart: unless-stopped
     
     ports:
-      - "8200:8200"  # API y UI (HTTPS en producción)
+      - "127.0.0.1:8200:8200"  # API y UI (HTTPS en producción)
     
     environment:
+      TZ: America/Lima
       # Configuración básica
-      VAULT_ADDR: 'http://0.0.0.0:8200'
+      VAULT_ADDR: 'http://127.0.0.1:8200'
       VAULT_API_ADDR: 'http://vault-prod:8200'
-      VAULT_CLUSTER_ADDR: 'http://vault-prod:8201'
+      VAULT_CLUSTER_ADDR: 'http://vault-prod:8201'      
       
       # Logging
       VAULT_LOG_LEVEL: 'info'
@@ -96,6 +97,7 @@ services:
       - "5432:5432"
     
     environment:
+      TZ: America/Lima
       POSTGRES_DB: appdb
       POSTGRES_USER: vault_admin
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ChangeMeInProduction}
@@ -130,6 +132,9 @@ services:
     ports:
       - "443:443"
       - "80:80"
+
+    environment:
+      TZ: America/Lima
     
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
